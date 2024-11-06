@@ -1,0 +1,74 @@
+from netmiko import ConnectHandler
+
+def check_config_against_best_practices(config_output):
+    """Compares current config to Cisco best practices and logs missing settings."""
+    best_practice_checks = {
+        "enable secret": "enable secret",
+        "service password-encryption": "service password-encryption",
+        "no service password-recovery": "no service password-recovery",
+        "aaa new-model": "aaa new-model",
+        "aaa local authentication attempts max-fail": "aaa local authentication attempts max-fail",
+        "logging": "logging",  # Check if logging is configured
+    }
+    
+    missing_settings = []
+    
+    for practice, command in best_practice_checks.items():
+        if command not in config_output:
+            missing_settings.append(command)
+    
+    return missing_settings
+
+def apply_syslog_config(connection, syslog_server):
+    """Configures syslog on the network device."""
+    syslog_commands = [
+        "logging host " + syslog_server,
+        "logging trap informational"
+    ]
+    connection.send_config_set(syslog_commands)
+
+def main():
+    # Device connection details
+    device_params = {
+        'device_type': 'cisco_ios',
+        'host': '192.168.56.101',
+        'username': 'cisco',
+        'password': 'cisco',
+        'secret': 'cisco'
+    }
+
+    try:
+        # Connect to the device
+        connection = ConnectHandler(**device_params)
+        connection.enable()
+
+        # Get the running configuration
+        running_config = connection.send_command("show running-config")
+        
+        # Compare config with best practices
+        missing_settings = check_config_against_best_practices(running_config)
+        
+        # Display findings
+        if missing_settings:
+            print("The following best practice configurations are missing:")
+            for setting in missing_settings:
+                print(f"- {setting}")
+        else:
+            print("All best practice configurations are present.")
+        
+        # Configure syslog if not already set
+        if "logging host" not in running_config:
+            syslog_server = "192.168.1.100"  # Replace with your syslog server IP
+            apply_syslog_config(connection, syslog_server)
+            print("Syslog configuration applied.")
+        else:
+            print("Syslog is already configured.")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        connection.disconnect()
+
+# Run the main function
+if __name__ == "__main__":
+    main()
