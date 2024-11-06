@@ -1,0 +1,86 @@
+from netmiko import ConnectHandler
+import difflib
+
+# Device connection details
+device = {
+    'device_type': 'cisco_ios',
+    'host': '192.168.56.101',  # IP address of the Cisco device
+    'username': 'cisco',       # Username
+    'password': 'cisco',       # Password
+    'secret': 'cisco'          # Enable password
+}
+
+# Hardening recommendations as a list of strings
+hardening_recommendations = [
+    "no ip http server",
+    "no ip http secure-server",
+    "service password-encryption",
+    "enable secret <secure_password>",  # Replace <secure_password> with your secure password
+    "logging buffered 4096",
+    "no cdp run",
+    "no ip source-route",
+    "no ip gratuitous-arps",
+    "login block-for 120 attempts 3 within 60",
+    "banner motd ^Authorized Access Only!^",  # Example banner message
+]
+
+def connect_to_device(device):
+    """Establish SSH connection to the device."""
+    connection = ConnectHandler(**device)
+    connection.enable()
+    return connection
+
+def get_running_config(connection):
+    """Retrieve the running configuration from the device."""
+    return connection.send_command("show running-config")
+
+def compare_with_hardening_recommendations(running_config):
+    """Compare the running configuration with hardening recommendations."""
+    # Split the running config into lines for comparison
+    running_config_lines = running_config.splitlines()
+    
+    # Compare each recommendation line with the running configuration
+    missing_recommendations = []
+    for recommendation in hardening_recommendations:
+        if recommendation not in running_config_lines:
+            missing_recommendations.append(recommendation)
+
+    # Display missing hardening recommendations
+    if missing_recommendations:
+        print("\nThe following recommended configurations are missing or misconfigured:\n")
+        for item in missing_recommendations:
+            print(f"- {item}")
+    else:
+        print("All recommended configurations are present in the running configuration.")
+
+def enable_syslog(connection, syslog_server="192.168.56.102"):
+    """Configure the network device to enable syslog for event logging."""
+    syslog_config = [
+        f"logging host {syslog_server}",
+        "logging trap informational"
+    ]
+    connection.send_config_set(syslog_config)
+    print(f"Syslog configured to log to {syslog_server}")
+
+def main():
+    try:
+        # Connect to the device
+        connection = connect_to_device(device)
+
+        # Task 1: Compare running-config with hardening recommendations
+        running_config = get_running_config(connection)
+        compare_with_hardening_recommendations(running_config)
+
+        # Task 2: Enable Syslog
+        syslog_server = "192.168.56.102"  # IP address of your syslog server
+        enable_syslog(connection, syslog_server)
+
+    except Exception as e:
+        print(f"Failed to execute script: {e}")
+
+    finally:
+        # Ensure device connection is closed
+        connection.disconnect()
+
+if __name__ == "__main__":
+    main()
