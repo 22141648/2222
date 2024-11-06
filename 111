@@ -1,0 +1,67 @@
+from netmiko import ConnectHandler
+from ciscoconfparse import CiscoConfParse
+
+# Device connection details based on the provided network diagram
+device = {
+    'device_type': 'cisco_ios',
+    'host': '192.168.56.101',  # IP address of the CSR1000v router
+    'username': 'cisco',
+    'password': 'cisco',
+    'secret': 'cisco',          # Enable password if needed
+}
+
+# List of Cisco hardening recommendations
+hardening_recommendations = {
+    "no ip http server",
+    "no ip http secure-server",
+    "service password-encryption",
+    "no cdp run",
+    "no ip source-route",
+    "enable secret 5",             # Check if an encrypted enable secret is configured
+    "logging buffered 4096 warnings",
+    "no ip bootp server",
+}
+
+# Syslog configuration commands
+# Assuming the Syslog server is on the Linux device at 192.168.56.30
+syslog_commands = [
+    "logging 192.168.56.30",       # Syslog server IP
+    "logging trap informational",  # Set logging level (informational level and above)
+    "service timestamps log datetime msec",
+    "logging facility local7"      # Optional: Customize logging facility if needed
+]
+
+# Connect to the device
+net_connect = ConnectHandler(**device)
+net_connect.enable()
+
+# Step 1: Fetch the running configuration and compare with hardening recommendations
+print("Checking for hardening compliance...")
+running_config = net_connect.send_command("show running-config")
+parse = CiscoConfParse(running_config.splitlines())
+
+non_compliant_settings = []
+for setting in hardening_recommendations:
+    if not parse.find_objects(setting):
+        non_compliant_settings.append(setting)
+
+if non_compliant_settings:
+    print("Non-compliant settings found:")
+    for setting in non_compliant_settings:
+        print(f"- {setting}")
+else:
+    print("All hardening recommendations are compliant.")
+
+# Step 2: Configure Syslog on the Device
+print("\nConfiguring syslog settings...")
+output = net_connect.send_config_set(syslog_commands)
+print(output)
+
+# Step 3: Verify syslog configuration
+print("\nVerifying syslog configuration...")
+verify_output = net_connect.send_command("show logging")
+print("Current Syslog Configuration:")
+print(verify_output)
+
+# Close the connection
+net_connect.disconnect()
