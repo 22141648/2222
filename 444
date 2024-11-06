@@ -1,0 +1,70 @@
+from netmiko import ConnectHandler
+import difflib
+
+def get_running_config(device_params):
+    """Retrieve the running configuration from the device."""
+    connection = ConnectHandler(**device_params)
+    connection.enable()
+    running_config = connection.send_command("show running-config")
+    connection.disconnect()
+    return running_config
+
+def compare_configs(running_config, hardening_config_file):
+    """Compare running config with hardening recommendations and log discrepancies."""
+    with open(hardening_config_file, "r") as file:
+        hardening_config = file.read()
+
+    diff = difflib.unified_diff(
+        hardening_config.splitlines(),
+        running_config.splitlines(),
+        fromfile="Hardening Config",
+        tofile="Running Config",
+        lineterm=""
+    )
+
+    comparison_result = "\n".join(diff)
+    if comparison_result:
+        print("Discrepancies found between running configuration and hardening recommendations:")
+        print(comparison_result)
+        with open("config_comparison_report.txt", "w") as report:
+            report.write(comparison_result)
+        print("Comparison report saved to config_comparison_report.txt")
+    else:
+        print("Running configuration complies with hardening recommendations.")
+
+def configure_syslog(device_params, syslog_server_ip):
+    """Enable syslog on the device for logging."""
+    connection = ConnectHandler(**device_params)
+    connection.enable()
+    
+    syslog_commands = [
+        "configure terminal",
+        f"logging host {syslog_server_ip}",
+        "logging trap informational",
+        "end"
+    ]
+    connection.send_config_set(syslog_commands)
+    print(f"Syslog configured with server {syslog_server_ip}")
+    connection.disconnect()
+
+# Define device connection details
+device_params = {
+    'device_type': 'cisco_ios',
+    'host': '192.168.56.101',
+    'username': 'cisco',
+    'password': 'cisco',
+    'secret': 'cisco'
+}
+
+# Hardening config file path
+hardening_config_file = "cisco_hardening_config.txt"
+syslog_server_ip = "192.168.1.100"
+
+# Retrieve the running configuration
+running_config = get_running_config(device_params)
+
+# Compare running config with Cisco hardening recommendations
+compare_configs(running_config, hardening_config_file)
+
+# Configure syslog for logging and monitoring
+configure_syslog(device_params, syslog_server_ip)
