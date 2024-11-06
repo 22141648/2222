@@ -1,0 +1,85 @@
+import difflib
+from netmiko import ConnectHandler
+
+# Device connection details
+device = {
+    'device_type': 'cisco_ios',
+    'host': '192.168.56.101',  # IP address of the Cisco device
+    'username': 'cisco',       # Username
+    'password': 'cisco',       # Password
+    'secret': 'cisco'          # Enable password
+}
+
+def connect_to_device(device):
+    """Establish SSH connection to the device."""
+    connection = ConnectHandler(**device)
+    connection.enable()
+    return connection
+
+def get_running_config(connection):
+    """Retrieve the running configuration from the device."""
+    return connection.send_command("show running-config")
+
+def compare_with_hardening_guide(running_config, hardening_guide_path):
+    """Compare the running configuration with Cisco hardening advice."""
+    try:
+        # Read hardening guide file
+        with open(hardening_guide_path, 'r') as file:
+            hardening_guide = file.read()
+
+        # Use difflib to compare configurations
+        diff = difflib.unified_diff(
+            running_config.splitlines(),
+            hardening_guide.splitlines(),
+            fromfile="Running Config",
+            tofile="Hardening Guide",
+            lineterm=''
+        )
+
+        # Display differences
+        differences = '\n'.join(diff)
+        if differences:
+            print("\nDifferences between Running Config and Hardening Guide:\n")
+            print(differences)
+        else:
+            print("No differences found between the running config and hardening guide.")
+
+    except FileNotFoundError:
+        print(f"Error: Hardening guide file '{hardening_guide_path}' not found.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+def enable_syslog(connection, syslog_server="192.168.56.102"):
+    """Configure the network device to enable syslog for event logging."""
+    syslog_config = [
+        f"logging host {syslog_server}",
+        "logging trap informational"
+    ]
+    connection.send_config_set(syslog_config)
+    print(f"Syslog configured to log to {syslog_server}")
+
+def main():
+    # Absolute path to the Cisco hardening guide file
+    hardening_guide_path = "/home/devasc/cisco_hardening_guide.txt"  # Update this path as needed
+    
+    try:
+        # Connect to the device
+        connection = connect_to_device(device)
+
+        # Task 1: Compare running-config with Cisco hardening guide
+        running_config = get_running_config(connection)
+        compare_with_hardening_guide(running_config, hardening_guide_path)
+
+        # Task 2: Enable Syslog
+        syslog_server = "192.168.56.102"  # IP address of your syslog server
+        enable_syslog(connection, syslog_server)
+
+    except Exception as e:
+        print(f"Failed to execute script: {e}")
+
+    finally:
+        # Ensure device connection is closed
+        connection.disconnect()
+
+if __name__ == "__main__":
+    main()
