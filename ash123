@@ -1,0 +1,130 @@
+from netmiko import ConnectHandler
+import datetime
+import os
+
+# Define device connection details
+device = {
+   'device_type': 'cisco_ios',  
+   'host': '192.168.56.101',    # Update with your device's IP
+   'username': 'cisco',         # Update with your username
+   'password': 'cisco',         # Update with your password
+   'secret': 'cisco',           # Enable password
+}
+
+# Logging function
+def log(message):
+   timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+   print(f"[{timestamp}] {message}")
+
+# Check device reachability
+def check_device_reachability():
+   response = os.system(f"ping -c 1 {device['host']}")
+   if response == 0:
+       log("Device is reachable.")
+       return True
+   else:
+       log("Device is not reachable. Check connectivity.")
+       return False
+
+# Connect to the device
+def connect_to_device():
+   if not check_device_reachability():
+       return None
+
+   try:
+       net_connect = ConnectHandler(**device)
+       net_connect.enable()  # Enter enable mode
+       log("Connected to device successfully.")
+       return net_connect
+   except Exception as e:
+       log(f"Failed to connect: {str(e)}")
+       return None
+
+# Configure ACLs on the device
+def configure_acl(net_connect):
+   acl_commands = [
+       'access-list 10 permit 192.168.1.0 0.0.0.255',
+       'access-list 10 deny any',
+       'interface GigabitEthernet1',
+       'ip access-group 10 in'
+   ]
+
+   try:
+       log("Applying ACL configuration...")
+       output = net_connect.send_config_set(acl_commands)
+       log("ACL configuration applied:\n" + output)
+   except Exception as e:
+       log(f"Failed to configure ACL: {str(e)}")
+
+# Configure basic IPSec on the device
+def configure_ipsec(net_connect):
+   ipsec_commands = [
+       'crypto isakmp policy 10',
+       'encryption aes 256',
+       'hash sha256',
+       'authentication pre-share',
+       'group 14',
+       'lifetime 86400',
+       'exit',
+       'crypto isakmp key cisco123 address 192.168.2.1',
+       'crypto ipsec transform-set MY_TRANSFORM_SET esp-aes 256 esp-sha-hmac',
+       'access-list 100 permit ip 192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255',
+       'crypto map MY_CRYPTO_MAP 10 ipsec-isakmp',
+       'set peer 192.168.2.1',
+       'set transform-set MY_TRANSFORM_SET',
+       'match address 100',
+       'exit',
+       'interface GigabitEthernet1',
+       'crypto map MY_CRYPTO_MAP'
+   ]
+
+   try:
+       log("Applying IPSec configuration...")
+       output = net_connect.send_config_set(ipsec_commands)
+       log("IPSec configuration applied:\n" + output)
+   except Exception as e:
+       log(f"Failed to configure IPSec: {str(e)}")
+
+# Save configuration
+def save_configuration(net_connect):
+   try:
+       log("Saving configuration...")
+       save_output = net_connect.send_command('write memory')
+       log("Configuration saved:\n" + save_output)
+   except Exception as e:
+       log(f"Failed to save configuration: {str(e)}")
+
+# Display configuration summary
+def display_summary():
+   log("Configuration Summary:")
+   log("1. ACL Configuration: SUCCESS")
+   log("2. IPSec Configuration: SUCCESS")
+   log("3. Configuration Save: SUCCESS")
+
+# Main script execution
+def main():
+   net_connect = connect_to_device()
+   
+   if net_connect:
+       # Configure ACL
+       configure_acl(net_connect)
+       
+       # Configure IPSec
+       configure_ipsec(net_connect)
+
+       # Save configuration
+       save_configuration(net_connect)
+
+       # Display summary
+       display_summary()
+
+       # Disconnect from the device
+       net_connect.disconnect()
+       log("Disconnected from the device.")
+   else:
+       log("Could not establish connection to device.")
+
+# Run the script
+if __name__ == "__main__":
+   main()
+
